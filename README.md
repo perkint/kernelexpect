@@ -13,7 +13,7 @@ dependency resolution.  This script tries to fill the gap...
 The script can be used for a quick single config change:
 
 ```
-  kernel-expect CONFIG_INTEL_MEI=n
+  kernel-expect -v CONFIG_INTEL_MEI=n
 ```
 
 Or...  It can be used to read a config file with many changes:
@@ -30,8 +30,21 @@ Or...  It can be used to read a config file with many changes:
   kernel-expect -v -f /tmp/snippets_file
 ```
 
+Dependencies:
+-------------
+
+  Debian-ish systems:
+
+```
+    apt-get install libexpect-perl libfile-which-perl
+```
+
 See also:
 ---------
+
+```
+kernel-expect -h
+```
 
 * [scripted configuring of a linux kernel]
   (http://unix.stackexchange.com/questions/282946)

@@ -43,7 +43,7 @@ See also:
 ---------
 
 ```
-kernel-expect -h
+kernel-expect --help
 ```
 
 * [scripted configuring of a linux kernel]

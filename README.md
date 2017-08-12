@@ -36,7 +36,7 @@ See also:
   (http://unix.stackexchange.com/questions/282946)
 
 * [Non-interactive configuration of linux kernel]
-  (https://unix.stackexchange.com/questions/19905)
+  (http://unix.stackexchange.com/questions/19905)
 
 * [Tor Perkins]
   (http://www.torp.com/resume/)

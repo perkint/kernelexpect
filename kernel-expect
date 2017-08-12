@@ -182,7 +182,7 @@ sub check_path {
 
 sub usage
 {
-my $version = .01;
+my $version = .02;
 
               open(OUT, ">&STDOUT");
 $_[0] eq 2 && open(OUT, ">&STDERR");

@@ -13,7 +13,7 @@
 # customize defaults #
 ######################
 
-$expect_timeout = 3;
+$expect_timeout = 9;
 
 ######################
 

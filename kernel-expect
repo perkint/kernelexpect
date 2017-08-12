@@ -1,0 +1,263 @@
+#!/usr/bin/perl
+#
+# Use Expect on the kernel's "make config" command...
+#
+#   Tor Perkins, 08/07/17
+#
+# Package prereqs on a debian based systems:
+#
+#   apt-get install libexpect-perl libfile-which-perl
+#
+
+######################
+# customize defaults #
+######################
+
+$expect_timeout = 3;
+
+######################
+
+$0 =~ s|.*/||;          # basename
+$p = ' ' x length($0);  # padding
+
+use Getopt::Long qw(:config gnu_getopt);
+GetOptions(
+  'd|debug'           => \$DEBUG,
+  'f|snippet-file=s'  => \&GetSnippetList,
+  'k|kernel-dir=s'    => \$KERNEL_DIR,
+  'h|help'            => \&usage,
+  'v|verbose'         => \$VERBOSE,
+) || usage(2);
+
+$DEBUG && $VERBOSE++;
+$KERNEL_DIR ||= '/usr/src/linux';
+
+check_path( qw( make perl ) );
+
+GetSnippetList('snippet-file', '-')               # look for config snippets on stdin...
+  unless (@SNIPPETS || push(@SNIPPETS, @ARGV));   # ... unless --snippet-file= or params
+
+#
+# create expect match/action pairs based on our config snippets...
+#
+foreach $snippet (@SNIPPETS) {
+  my ($c, $v) = $snippet =~ /([^=]+)=([^=]*)/;
+  $c =~ s/^CONFIG_//;
+  $c || die("++error: bad snippet: $snippet");
+  $v =~ /^$|^n|none|undef$/ && push(@undef_list, $c);
+  SWITCH: for ( $v ) {
+    /^choice$/ && do {  # picklist
+      push(@match_patterns, [
+        qr{\n[ >]+[0-9]+\. .*? \($c\)},
+          sub { my $self = shift;
+                ($pending_choice_response) = $self->match() =~ /\n[ >]+(\d+)\./;
+                exp_continue } ] );
+      last; };
+    /^[ynm]$/i && do {  # Yes/No/Module
+      push(@match_patterns, [
+        qr{ \($c\) \[[?/YNM]+\] (.NEW..)?$}i,
+          sub { my $self = shift; $self->send("\L$v\n"); exp_continue } ] );
+      last; };
+    /./ && do {         # assume it's a string...
+      push(@match_patterns, [
+        qr{ \($c\) \[.*?\] (.NEW..)?$},
+          sub { my $self = shift; $self->send("$v\n"); exp_continue } ] );
+      last; };
+  }
+}
+
+#
+# append some default expect match/action pairs (order matters)...
+#
+push(@match_patterns, [
+  qr{ \([A-Za-z0-9_]+?\) \[[?/YNM]+\] (.NEW..)?$}i,  # Yes/No/Module (that we do not care about)...
+    sub { my $self = shift;
+             $self->send("\n");
+          exp_continue } ] );
+push(@match_patterns, [
+  qr{ \([A-Za-z0-9_]+?\) \[.*?\] (.NEW..)?$}i,       # a string value (that we do not care about)...
+    sub { my $self = shift;
+             $self->send("\n");
+          exp_continue } ] );
+push(@match_patterns, [
+  qr{\n\s*choice\[[-0-9]+\??\]: (.NEW..)?$},         # a choice (pick list)
+    sub { my $self = shift;
+             $self->send("$pending_choice_response\n");
+                    undef $pending_choice_response;
+          exp_continue } ] );
+
+#
+# For things we want disabled (SOME_SNIPPET=n), we face some inflexibility.
+# This is because the 'n' option is not available if some child dependency
+# is set to yes/module...
+#
+# Here we assume that it's safe (danger!) to undef anything that has our our
+# snippet as a substring, e.g.:
+#
+#   INTEL_MEI=n
+#
+# Will cause these settings to be undefined:
+#
+#   CONFIG_INTEL_MEI
+#   CONFIG_INTEL_MEI_ME
+#   CONFIG_INTEL_MEI_TXE
+#   CONFIG_INTEL_MEI_WDT
+#
+# Later, when we run 'make config', we'll see:
+#
+#   (INTEL_MEI) [N/m/y/?] (NEW)         fixme: bad example as N is default.
+#
+# ... and then we can properly 'no' it.
+#
+if ( -f '.config' ) {
+  for (@undef_list) {
+    /_/ || next;  # kludge alert!!!
+    system("perl -n -i -e '/$_/||print' .config");
+  }
+}
+
+$expect_session = get_kernel_config_session($KERNEL_DIR);
+$expect_session->expect($expect_timeout, @match_patterns);
+$expect_session->close;
+$VERBOSE && print("\n");
+
+###############
+# Subroutines #
+###############
+
+sub GetSnippetList {
+  my ( $junk, $SnippetFile ) = @_;
+  if ( $SnippetFile eq '-' ) {
+    @SnippetFile = <STDIN>;
+  } else {
+    -f $SnippetFile || die "++error: no such file: $SnippetFile";
+    open(IN, "<$SnippetFile") || die;
+    @SnippetFile = <IN>;
+    close IN;
+  }
+  for ( @SnippetFile ) {
+    chomp;
+    s/#.*//;                   # strip comments
+    s/^\s+//;                  # strip leading blanks
+    s/\s+$//;                  # strip trailing blanks
+    /^$/ && next;              # skip blank lines
+    /[^A-Za-z0-9_=]/ && next;  # no funny stuff
+    push(@SNIPPETS, $_);
+ }
+}
+
+sub get_kernel_config_session {
+  use Expect;
+
+  my $KERNEL_DIR = shift || die;
+
+  chdir($KERNEL_DIR) || die("++error: chdir: $KERNEL_DIR");
+
+  $Expect::Log_Stdout = ( $VERBOSE ? 1 : 0 );
+
+  if ($DEBUG) {
+    $Expect::Log_Stdout   = 0;
+    $Expect::Debug        = 1; # super DEBUG
+    $Expect::Exp_Internal = 1; # super DEBUG
+  }
+
+  $expect_session = new Expect;
+  $expect_session->raw_pty(1); # work = 1;
+  $expect_session->spawn("make config") || die;
+
+  die("++error: expect session could not be established")
+    unless $expect_session->expect($expect_timeout,
+      [ qr/\n\* Linux.*?Kernel Configuration/ ]);
+
+  return $expect_session;
+}
+
+sub check_path {
+  delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
+  $ENV{PATH} = '/bin:/usr/bin:/sbin:/usr/sbin';
+  use File::Which;
+  map { which($_) || die "$_ not in PATH" } @_;
+}
+
+sub usage
+{
+my $version = .01;
+
+              open(OUT, ">&STDOUT");
+$_[0] eq 2 && open(OUT, ">&STDERR");
+
+print OUT <<"EOF";
+
+$0 version $version.
+
+Usage:
+
+  $0 -[h|-help] -[v|-verbose] -[d|-debug]
+  $p -[f|-snippet-file=] -[k|-kernel-dir=]
+  $p  <CONFIG_SNIPPET=[y|n|m|choice|undef|some_string_value"]> ...
+
+Purpose:
+
+  Automate Linux kernel configuration with dependency resolution.
+
+Rationale:
+
+  The 'make nconfig' GUI configurator has dependency resolution but
+  cannot be automated at the command line.  There are some utilities
+  that allow for automated edits of the config, but they do not do
+  dependency resolution.  This script tries to fill the gap...
+
+  It uses the Expect library to automate answering the many questions
+  asked by 'make config' (the non-GUI configurator).
+
+Magic config values:
+
+  =undef
+
+    This means strip it out of the config.  There is some extra magic
+    here because it only works if the option has a '_' char in it, and
+    if it does, it really strips '.*MY_CONFIG_OPTION.*'...  This is also
+    the behaviour if there is no config value (just 'FOO_BAR=').
+
+  =choice
+
+    This means the config option will be presented as an option in a
+    picklist.  The script will look for that and pick it...
+
+  =some_string_value
+
+    If 'choice|undef' and 'y|n|m' are not found, the value is assumed to
+    be a string and that will be used for setting the option.  Use this
+    on a non-string option for infinite looping at runtime...
+
+Usage tips:
+
+  Use the --verbose param when testing (things can easily go wrong).
+
+  Make a backup of your configuration and diff against the new config.
+
+  If you do not have a .config file already, you'll get a default one.
+
+Usage Example:
+
+  # just quickly change a setting (in /usr/src/linux)...
+  $0 CONFIG_INTEL_MEI=n
+  echo CONFIG_INTEL_MEI=n | $0
+
+  # read a template file; work in a non-default kernel location...
+  $0 -v -f /tmp/snippets_file -k /usr/src/linux-source-4.9
+
+Sample config snippet file:
+
+  vi /tmp/snippets_file
+
+    # comments look like this...
+    CONFIG_INTEL_MEI=n  # ... and this...
+
+    # pick from a list...
+    CC_STACKPROTECTOR_STRONG=choice
+
+EOF
+exit 1;
+}
+

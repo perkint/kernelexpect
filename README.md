@@ -1,8 +1,9 @@
 Kernel Expect
 =============
 
-Kernel Expect (kernelexpect) is a small script that uses the Expect library to
-automate Linux kernel configuration with dependency resolution.
+Kernel Expect (kernelexpect) is a small script that uses the
+[Expect library](https://en.wikipedia.org/wiki/Expect)
+to automate Linux kernel configuration with dependency resolution.
 
 The 'make nconfig' GUI configurator has dependency resolution but cannot be
 automated at the command line.  There are some utilities that allow for

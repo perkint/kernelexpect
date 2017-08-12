@@ -30,6 +30,7 @@ GetOptions(
 ) || usage(2);
 
 $DEBUG && $VERBOSE++;
+$KERNEL_DIR ||= '.' if -f '.config';
 $KERNEL_DIR ||= '/usr/src/linux';
 
 check_path( qw( make perl ) );

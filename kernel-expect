@@ -4,9 +4,23 @@
 #
 #   Tor Perkins, 08/07/17
 #
-# Package prereqs on a debian based systems:
+# Package prereqs on debian based systems:
 #
 #   apt-get install libexpect-perl libfile-which-perl
+#
+#
+# This program is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 
 ######################
@@ -92,7 +106,7 @@ push(@match_patterns, [
 # This is because the 'n' option is not available if some child dependency
 # is set to yes/module...
 #
-# Here we assume that it's safe (danger!) to undef anything that has our our
+# Here we assume that it's safe (danger!) to undef anything that has our
 # snippet as a substring, e.g.:
 #
 #   INTEL_MEI=n
@@ -182,7 +196,7 @@ sub check_path {
 
 sub usage
 {
-my $version = .02;
+my $version = .03;
 
               open(OUT, ">&STDOUT");
 $_[0] eq 2 && open(OUT, ">&STDERR");
